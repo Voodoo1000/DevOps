@@ -135,11 +135,23 @@ pipeline {
 
                 archiveArtifacts artifacts: 'deployment.log', allowEmptyArchive: true
 
-                bat """
-                echo Starting Django server on http://localhost:8000...
-                cd ${DJANGO_DIR}
-                start "" cmd /k "python manage.py runserver 8000"
-                """
+                script {
+                    def process = bat(
+                        script: '''
+                            echo Starting Django server on http://localhost:8000...
+                            cd ${DJANGO_DIR}
+                            start "DjangoServer" cmd /k "python manage.py runserver 8000"
+                            timeout /t 5 >nul
+                            for /f "tokens=2" %%i in ('tasklist ^| findstr "python"') do set PID=%%i
+                            echo %PID%
+                        ''',
+                        returnStatus: false,
+                        returnStdout: true
+                    )
+                    def pid = process.trim()
+                    echo "✅ Django server started with PID: ${pid}"
+                    env.DJANGO_PID = pid
+                }
 
                 echo "Django server started on http://localhost:8000 (for demo only)"
             }
@@ -156,6 +168,18 @@ pipeline {
                         to: "${env.EMAIL_RECIPIENT}"
                     )
                 }
+            }
+        }
+        stage('Kill Django Server') {
+            when {
+                expression {
+                    return env.DJANGO_PID != null
+                }
+            }
+            steps {
+                echo 'Stopping Django server...'
+                bat "taskkill /F /PID ${env.DJANGO_PID} >nul 2>&1"
+                echo "Django server (PID ${env.DJANGO_PID}) terminated."
             }
         }
     }
