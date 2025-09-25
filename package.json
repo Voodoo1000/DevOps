@@ -1,0 +1,11 @@
+{
+  "dependencies": {
+    "@popperjs/core": "^2.11.8",
+    "bootstrap": "^5.3.3",
+    "js-cookie": "^3.0.5",
+    "sass": "^1.82.0",
+    "sass-loader": "^16.0.4",
+    "vue-toastification": "^2.0.0-rc.5",
+    "webpack": "^5.97.0"
+  }
+}
