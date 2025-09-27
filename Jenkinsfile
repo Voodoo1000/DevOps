@@ -124,40 +124,34 @@ pipeline {
                 }
             }
             steps {
-                echo '🚀 Deploying to production...'
+                echo 'Deploying to production...'
 
                 // 1. Собираем Vue.js
                 bat "cd ${VUE_DIR} && npm run build"
 
-                // 2. Копируем билд в Django
                 bat "if not exist \"${DJANGO_DIR}\\static\\frontend\" mkdir \"${DJANGO_DIR}\\static\\frontend\""
                 bat "xcopy /E /I /Y \"${VUE_DIR}\\dist\\*\" \"${DJANGO_DIR}\\static\\frontend\\\""
 
-                // 3. Сохраняем лог деплоя
                 bat "echo Deployment successful at %DATE% %TIME% on branch main > deployment.log"
                 bat "echo Git commit: %GIT_COMMIT% >> deployment.log"
                 archiveArtifacts artifacts: 'deployment.log', allowEmptyArchive: true
 
-                // 4. ЗАПУСКАЕМ DJANGO-СЕРВЕР — БЕЗ script { bat """...""" } — ТОЛЬКО bat
-                echo '🚀 Starting Django server on http://localhost:8000...'
+                echo 'Starting Django server on http://localhost:8000...'
                 bat "cd ${DJANGO_DIR}"
-                bat "start \"DjangoServer\" cmd /k \"python manage.py runserver 8000\""
+                bat 'start "DjangoServer" cmd /k "python manage.py runserver 8000"' 
+                bat 'timeout /t 5 >nul'
 
-                // 5. Ждём 5 секунд, чтобы сервер запустился
-                bat "timeout /t 5 >nul"
-
-                // 6. Получаем PID процесса Python
                 bat "for /F \"tokens=2\" %i in ('tasklist ^| findstr \"python\"') do set PID=%i"
                 bat "echo Django server PID: %PID%"
                 bat "echo %PID% > django_pid.txt"
                 archiveArtifacts artifacts: 'django_pid.txt', allowEmptyArchive: true
 
-                echo '✅ Django server started on http://localhost:8000 (for demo only)'
+                echo 'Django server started on http://localhost:8000 (for demo only)'
             }
             post {
                 success {
                     emailext(
-                        subject: "✅ DJANGO SERVER DEPLOYED: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+                        subject: "DJANGO SERVER DEPLOYED: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
                         body: """<h2>🎉 Django Server Deployed!</h2>
                                 <p><strong>Project:</strong> Django + Vue.js</p>
                                 <p><strong>Branch:</strong> ${env.GIT_BRANCH}</p>
@@ -171,7 +165,7 @@ pipeline {
                 }
                 failure {
                     emailext(
-                        subject: "❌ DEPLOY FAILED: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+                        subject: "DEPLOY FAILED: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
                         body: """<h3>🚨 Deployment failed!</h3>
                                 <p><strong>Branch:</strong> ${env.GIT_BRANCH}</p>
                                 <p><strong>Log:</strong> <a href="${env.BUILD_URL}console">View Console</a></p>""",
@@ -182,14 +176,24 @@ pipeline {
         }
         stage('Kill Django Server') {
             when {
-                expression {
-                    return env.DJANGO_PID != null
-                }
+                expression { return true } 
             }
             steps {
-                echo 'Stopping Django server...'
-                bat "taskkill /F /PID ${env.DJANGO_PID} >nul 2>&1"
-                echo "Django server (PID ${env.DJANGO_PID}) terminated."
+                echo "Killing Django server process..."
+                script {
+                    if (fileExists('django_server.pid')) {
+                        def pid = readFile('django_server.pid').trim()
+                        try {
+                            bat "taskkill /PID ${pid} /F"
+                            echo "Successfully killed process with PID ${pid}."
+                        } catch (Exception e) {
+                            echo "Warning: Could not kill process with PID ${pid}. It may have already exited. Error: ${e.getMessage()}"
+                        }
+                        sh 'rm django_server.pid'
+                    } else {
+                        echo "PID file not found. Server may not have been started or already stopped."
+                    }
+                }
             }
         }
     }
