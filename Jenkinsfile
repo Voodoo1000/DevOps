@@ -200,41 +200,26 @@ pipeline {
 
     post {
         always {
-            stage('Kill Django Server') {
-                steps {
-                    echo "💀 Killing Django server process..."
-                    script {
-                        if (fileExists('django_server.pid')) {
-                            // Читаем PID из файла
-                            def pid = readFile('django_server.pid').trim()
-                            
-                            // Завершаем процесс, используя taskkill
-                            // /F - принудительно, /T - завершает дочерние процессы (включая cmd)
-                            try {
-                                bat "taskkill /PID ${pid} /F /T"
-                                echo "Successfully killed process with PID ${pid}."
-                            } catch (Exception e) {
-                                echo "Warning: Process with PID ${pid} may have already exited. Error: ${e.getMessage()}"
-                            }
-                            
-                            // Удаляем временный файл
-                            bat 'del django_server.pid'
-                        } else {
-                            echo "PID file not found. Server was not started or was stopped earlier."
-                        }
+            echo "💀 Killing Django server process..."
+            script { // Блок 'script' используется для Groovy-логики (if/else, fileExists, readFile)
+                if (fileExists('django_server.pid')) {
+                    def pid = readFile('django_server.pid').trim()
+                    
+                    try {
+                        bat "taskkill /PID ${pid} /F /T"
+                        echo "Successfully killed process with PID ${pid}."
+                    } catch (Exception e) {
+                        echo "Warning: Process with PID ${pid} may have already exited. Error: ${e.getMessage()}"
                     }
+                    
+                    bat 'del django_server.pid'
+                } else {
+                    echo "PID file not found."
                 }
             }
-            echo 'Cleaning workspace...'
-            cleanWs()
-        }
-        failure {
-            emailext(
-                subject: "BUILD FAILED: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
-                body: """<h3>Build failed during pipeline execution.</h3>
-                         <p>Check logs: <a href="${env.BUILD_URL}console">Console Output</a></p>""",
-                to: "${env.EMAIL_RECIPIENT}"
-            )
+            
+            echo "Cleaning workspace..."
+            cleanWs() // Очистка рабочего пространства
         }
     }
 }
