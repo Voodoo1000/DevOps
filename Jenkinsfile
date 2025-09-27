@@ -138,7 +138,7 @@ pipeline {
 
                 echo 'Starting Django server on http://localhost:8000...'
                 bat "cd ${DJANGO_DIR}"
-                bat 'start "DjangoServer" cmd /k "python manage.py runserver 8000"' 
+                powershell 'start "DjangoServer" cmd /k "python manage.py runserver 8000"' 
                 bat 'timeout /t 5 >nul'
 
                 bat "for /F \"tokens=2\" %i in ('tasklist ^| findstr \"python\"') do set PID=%i"
@@ -174,32 +174,57 @@ pipeline {
                 }
             }
         }
-        stage('Kill Django Server') {
-            when {
-                expression { return true } 
-            }
-            steps {
-                echo "Killing Django server process..."
-                script {
-                    if (fileExists('django_server.pid')) {
-                        def pid = readFile('django_server.pid').trim()
-                        try {
-                            bat "taskkill /PID ${pid} /F"
-                            echo "Successfully killed process with PID ${pid}."
-                        } catch (Exception e) {
-                            echo "Warning: Could not kill process with PID ${pid}. It may have already exited. Error: ${e.getMessage()}"
-                        }
-                        sh 'rm django_server.pid'
-                    } else {
-                        echo "PID file not found. Server may not have been started or already stopped."
-                    }
-                }
-            }
-        }
+        // stage('Kill Django Server') {
+        //     when {
+        //         expression { return true } 
+        //     }
+        //     steps {
+        //         echo "Killing Django server process..."
+        //         script {
+        //             if (fileExists('django_server.pid')) {
+        //                 def pid = readFile('django_server.pid').trim()
+        //                 try {
+        //                     bat "taskkill /PID ${pid} /F"
+        //                     echo "Successfully killed process with PID ${pid}."
+        //                 } catch (Exception e) {
+        //                     echo "Warning: Could not kill process with PID ${pid}. It may have already exited. Error: ${e.getMessage()}"
+        //                 }
+        //                 sh 'rm django_server.pid'
+        //             } else {
+        //                 echo "PID file not found. Server may not have been started or already stopped."
+        //             }
+        //         }
+        //     }
+        // }
     }
 
     post {
         always {
+            stage('Kill Django Server') {
+                steps {
+                    echo "💀 Killing Django server process..."
+                    script {
+                        if (fileExists('django_server.pid')) {
+                            // Читаем PID из файла
+                            def pid = readFile('django_server.pid').trim()
+                            
+                            // Завершаем процесс, используя taskkill
+                            // /F - принудительно, /T - завершает дочерние процессы (включая cmd)
+                            try {
+                                bat "taskkill /PID ${pid} /F /T"
+                                echo "Successfully killed process with PID ${pid}."
+                            } catch (Exception e) {
+                                echo "Warning: Process with PID ${pid} may have already exited. Error: ${e.getMessage()}"
+                            }
+                            
+                            // Удаляем временный файл
+                            bat 'del django_server.pid'
+                        } else {
+                            echo "PID file not found. Server was not started or was stopped earlier."
+                        }
+                    }
+                }
+            }
             echo 'Cleaning workspace...'
             cleanWs()
         }
