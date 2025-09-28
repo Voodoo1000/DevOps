@@ -36,6 +36,7 @@ pipeline {
                     changeRequest() 
                     expression { return env.GIT_BRANCH == 'origin/dev' }
                     expression { return env.GIT_BRANCH == 'origin/main' }
+                }
             }
             steps {
                 echo 'Installing Node.js dependencies (Vue frontend)...'
@@ -49,6 +50,7 @@ pipeline {
                     changeRequest() 
                     expression { return env.GIT_BRANCH == 'origin/dev' }
                     expression { return env.GIT_BRANCH == 'origin/main' }
+                }
             }
             steps {
                 echo 'Building Vue.js application...'
@@ -67,6 +69,7 @@ pipeline {
                     changeRequest() 
                     expression { return env.GIT_BRANCH == 'origin/dev' }
                     expression { return env.GIT_BRANCH == 'origin/main' }
+                }
             }
             steps {
                 echo 'Running Django tests...'
