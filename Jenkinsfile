@@ -2,76 +2,114 @@ pipeline {
     agent any
 
     environment {
+        // Убедитесь, что эта переменная будет содержать корректный email для уведомлений
         EMAIL_RECIPIENT = 'vlad.butakov.2004@mail.ru'
         VUE_DIR = 'client'
         DJANGO_DIR = '.'
     }
 
     stages {
+        stage('Debug Branch Info') {
+            steps {
+                script {
+                    echo "--- Сборка инициирована ---"
+                    echo "GIT_BRANCH: '${env.GIT_BRANCH}'"
+                    // Если это Merge Request, будут доступны следующие переменные:
+                    if (env.CHANGE_ID) {
+                        echo "Это Merge Request: ${env.CHANGE_ID}"
+                        echo "Целевая ветка (Target Branch): ${env.CHANGE_TARGET}"
+                        echo "Исходная ветка (Source Branch): ${env.CHANGE_BRANCH}"
+                    } else {
+                        echo "Это прямой пуш в ветку."
+                    }
+                    echo "----------------------------"
+                }
+            }
+        }
+
         stage('Checkout') {
             steps {
                 echo 'Cloning repository...'
+                // SCM Checkout автоматически получит код MR/PR, если настроен Branch Source Plugin
                 checkout scm
             }
         }
 
         stage('Install Python Dependencies') {
+            // Запускаем установку зависимостей, если это dev, main или MR/PR
+            when {
+                anyOf {
+                    branch 'dev'
+                    branch 'main'
+                    changeRequest() // Включает все Merge Requests (например, из fix/* в dev)
+                }
+            }
             steps {
                 echo 'Installing Python dependencies (Django)...'
-                bat "pip install -r ${DJANGO_DIR}/requirements.txt"
+                // Используем powershell для более надежного выполнения в Windows
+                powershell "pip install -r ${DJANGO_DIR}/requirements.txt"
             }
         }
 
         stage('Install Node.js Dependencies (Vue)') {
+            // Запускаем установку зависимостей, если это dev, main или MR/PR
             when {
-                expression {
-                    return env.GIT_BRANCH == 'origin/dev' ||
-                           env.GIT_BRANCH == 'origin/fix' ||
-                           env.GIT_BRANCH == 'origin/main'
+                anyOf {
+                    branch 'dev'
+                    branch 'main'
+                    changeRequest() // Включает все Merge Requests (например, из fix/* в dev)
                 }
             }
             steps {
                 echo 'Installing Node.js dependencies (Vue frontend)...'
-                bat "cd ${VUE_DIR} && npm install"
+                powershell "cd ${VUE_DIR} ; npm install"
             }
         }
 
         stage('Build Vue.js Frontend') {
+            // Запускаем сборку, если это dev, main или MR/PR
             when {
-                expression {
-                    return env.GIT_BRANCH == 'origin/dev' ||
-                           env.GIT_BRANCH == 'origin/fix' ||
-                           env.GIT_BRANCH == 'origin/main'
+                anyOf {
+                    branch 'dev'
+                    branch 'main'
+                    changeRequest() // Включает все Merge Requests (например, из fix/* в dev)
                 }
             }
             steps {
                 echo 'Building Vue.js application...'
-                bat "cd ${VUE_DIR} && npm run build"
-
-                bat "if not exist \"${DJANGO_DIR}\\static\\frontend\" mkdir \"${DJANGO_DIR}\\static\\frontend\""
-
-                bat "xcopy /E /I /Y \"${VUE_DIR}\\dist\\*\" \"${DJANGO_DIR}\\static\\frontend\\\""
-
+                // Комманды для Windows/bat лучше заменить на powershell для большей универсальности
+                powershell """
+                    cd ${VUE_DIR}
+                    npm run build
+                    # Копирование собранных файлов
+                    $targetDir = "${DJANGO_DIR}\\static\\frontend"
+                    if (-not (Test-Path $targetDir)) {
+                        mkdir $targetDir
+                    }
+                    Copy-Item -Path "${VUE_DIR}\\dist\\*" -Destination $targetDir -Recurse -Force
+                """
                 echo 'Vue.js built and copied to Django static/frontend folder.'
             }
         }
 
         stage('Run Django Tests') {
+            // Запускаем тесты, если это dev, main или MR/PR
             when {
-                expression {
-                    return env.GIT_BRANCH == 'origin/dev' ||
-                           env.GIT_BRANCH == 'origin/fix' ||
-                           env.GIT_BRANCH == 'origin/main'
+                anyOf {
+                    branch 'dev'
+                    branch 'main'
+                    changeRequest() // Включает все Merge Requests (например, из fix/* в dev)
                 }
             }
             steps {
                 echo 'Running Django tests...'
-                bat "python ${DJANGO_DIR}/manage.py test --verbosity=2"
+                powershell "python ${DJANGO_DIR}/manage.py test --verbosity=2"
             }
             post {
                 failure {
+                    // Уведомление об ошибке после тестов
                     emailext(
-                        subject: "TEST FAILED: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+                        subject: "TEST FAILED: ${env.JOB_NAME} #${env.BUILD_NUMBER} (${env.GIT_BRANCH})",
                         body: """<h3>Django/Vue CI Failed!</h3>
                                  <p><strong>Branch:</strong> ${env.GIT_BRANCH}</p>
                                  <p><strong>Commit:</strong> ${env.GIT_COMMIT}</p>
@@ -83,113 +121,44 @@ pipeline {
             }
         }
 
-        stage('Merge fix to dev') {
-            when {
-                expression {
-                    return env.GIT_BRANCH == 'origin/fix'
-                }
-            }
-            steps {
-                script {
-                    bat """
-                        git config --global user.email "jenkins@localhost"
-                        git config --global user.name "Jenkins CI"
-                        git checkout dev
-                        git pull origin dev
-                        git merge --no-ff origin/fix -m "Auto-merge from fix branch"
-                        git push origin dev
-                    """
-                    
-                    echo "Successfully merged fix into dev!"
-                }
-            }
-            post {
-                failure {
-                    emailext(
-                        subject: "MERGE FAILED: fix → dev in ${env.JOB_NAME} #${env.BUILD_NUMBER}",
-                        body: """<h3>Merge from fix to dev failed!</h3>
-                                <p><strong>Branch:</strong> ${env.GIT_BRANCH}</p>
-                                <p><strong>Commit:</strong> ${env.GIT_COMMIT}</p>
-                                <p><strong>Log:</strong> <a href="${env.BUILD_URL}console">View Console</a></p>""",
-                        to: "${env.EMAIL_RECIPIENT}"
-                    )
-                }
-            }
-        }
-
         stage('Deploy to Production (main branch)') {
+            // Деплой только при прямом пуше в main (после успешного Merge Request)
             when {
-                expression {
-                    return env.GIT_BRANCH == 'origin/main'
-                }
+                branch 'main'
             }
             steps {
-                echo '🚀 Deploying to production...'
+                echo 'Deploying to production...'
+                // Переиспользуем команды сборки, чтобы обеспечить наличие свежего билда
+                powershell """
+                    cd ${VUE_DIR}
+                    npm run build
 
-                // 1. Собираем Vue.js
-                bat "cd ${VUE_DIR} && npm run build"
+                    $targetDir = "${DJANGO_DIR}\\static\\frontend"
+                    if (-not (Test-Path $targetDir)) {
+                        mkdir $targetDir
+                    }
+                    Copy-Item -Path "${VUE_DIR}\\dist\\*" -Destination $targetDir -Recurse -Force
 
-                // 2. Копируем билд в Django
-                bat "if not exist \"${DJANGO_DIR}\\static\\frontend\" mkdir \"${DJANGO_DIR}\\static\\frontend\""
-                bat "xcopy /E /I /Y \"${VUE_DIR}\\dist\\*\" \"${DJANGO_DIR}\\static\\frontend\\\""
+                    "Deployment successful on branch main" | Out-File deployment.log
+                    "Git commit: ${env.GIT_COMMIT}" | Out-File deployment.log -Append
+                """
 
-                // 3. Сохраняем лог деплоя
-                bat "echo Deployment successful at %DATE% %TIME% on branch main > deployment.log"
-                bat "echo Git commit: %GIT_COMMIT% >> deployment.log"
                 archiveArtifacts artifacts: 'deployment.log', allowEmptyArchive: true
-
-                // 4. ЗАПУСКАЕМ DJANGO-СЕРВЕР — БЕЗ script { bat """...""" } — ТОЛЬКО bat
-                echo '🚀 Starting Django server on http://localhost:8000...'
-                bat "cd ${DJANGO_DIR}"
-                bat "start \"DjangoServer\" cmd /k \"python manage.py runserver 8000\""
-
-                // 5. Ждём 5 секунд, чтобы сервер запустился
-                bat "timeout /t 5 >nul"
-
-                // 6. Получаем PID процесса Python
-                bat "for /F \"tokens=2\" %i in ('tasklist ^| findstr \"python\"') do set PID=%i"
-                bat "echo Django server PID: %PID%"
-                bat "echo %PID% > django_pid.txt"
-                archiveArtifacts artifacts: 'django_pid.txt', allowEmptyArchive: true
-
-                echo '✅ Django server started on http://localhost:8000 (for demo only)'
+                echo 'Production deploy prepared!'
             }
             post {
                 success {
                     emailext(
-                        subject: "✅ DJANGO SERVER DEPLOYED: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
-                        body: """<h2>🎉 Django Server Deployed!</h2>
-                                <p><strong>Project:</strong> Django + Vue.js</p>
-                                <p><strong>Branch:</strong> ${env.GIT_BRANCH}</p>
-                                <p><strong>Commit:</strong> ${env.GIT_COMMIT}</p>
-                                <p><strong>Server URL:</strong> <a href="http://localhost:8000">http://localhost:8000</a> (on Jenkins machine)</p>
-                                <p><em>Note: This is a demo server. For production, use Gunicorn/Nginx/Docker.</em></p>
-                                <p><strong>Deployment log attached.</strong></p>
-                                <p><a href="${env.BUILD_URL}">View Build</a></p>""",
+                        subject: "DEPLOYED TO PRODUCTION: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+                        body: """<h2>Production Deployment Prepared!</h2>
+                                 <p><strong>Project:</strong> Django + Vue.js</p>
+                                 <p><strong>Branch:</strong> ${env.GIT_BRANCH}</p>
+                                 <p><strong>Commit:</strong> ${env.GIT_COMMIT}</p>
+                                 <p><strong>Deployment log attached.</strong></p>
+                                 <p><a href="${env.BUILD_URL}">View Build</a></p>""",
                         to: "${env.EMAIL_RECIPIENT}"
                     )
                 }
-                failure {
-                    emailext(
-                        subject: "❌ DEPLOY FAILED: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
-                        body: """<h3>🚨 Deployment failed!</h3>
-                                <p><strong>Branch:</strong> ${env.GIT_BRANCH}</p>
-                                <p><strong>Log:</strong> <a href="${env.BUILD_URL}console">View Console</a></p>""",
-                        to: "${env.EMAIL_RECIPIENT}"
-                    )
-                }
-            }
-        }
-        stage('Kill Django Server') {
-            when {
-                expression {
-                    return env.DJANGO_PID != null
-                }
-            }
-            steps {
-                echo 'Stopping Django server...'
-                bat "taskkill /F /PID ${env.DJANGO_PID} >nul 2>&1"
-                echo "Django server (PID ${env.DJANGO_PID}) terminated."
             }
         }
     }
