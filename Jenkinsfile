@@ -2,6 +2,7 @@ pipeline {
     agent any
 
     environment {
+        // Убедитесь, что эта переменная будет содержать корректный email для уведомлений
         EMAIL_RECIPIENT = 'vlad.butakov.2004@mail.ru'
         VUE_DIR = 'client'
         DJANGO_DIR = '.'
@@ -11,7 +12,17 @@ pipeline {
         stage('Debug Branch Info') {
             steps {
                 script {
+                    echo "--- Сборка инициирована ---"
                     echo "GIT_BRANCH: '${env.GIT_BRANCH}'"
+                    // Если это Merge Request, будут доступны следующие переменные:
+                    if (env.CHANGE_ID) {
+                        echo "Это Merge Request: ${env.CHANGE_ID}"
+                        echo "Целевая ветка (Target Branch): ${env.CHANGE_TARGET}"
+                        echo "Исходная ветка (Source Branch): ${env.CHANGE_BRANCH}"
+                    } else {
+                        echo "Это прямой пуш в ветку."
+                    }
+                    echo "----------------------------"
                 }
             }
         }
@@ -19,66 +30,86 @@ pipeline {
         stage('Checkout') {
             steps {
                 echo 'Cloning repository...'
+                // SCM Checkout автоматически получит код MR/PR, если настроен Branch Source Plugin
                 checkout scm
             }
         }
 
         stage('Install Python Dependencies') {
+            // Запускаем установку зависимостей, если это dev, main или MR/PR
+            when {
+                anyOf {
+                    branch 'dev'
+                    branch 'main'
+                    changeRequest() // Включает все Merge Requests (например, из fix/* в dev)
+                }
+            }
             steps {
                 echo 'Installing Python dependencies (Django)...'
-                bat "pip install -r ${DJANGO_DIR}/requirements.txt"
+                // Используем powershell для более надежного выполнения в Windows
+                powershell "pip install -r ${DJANGO_DIR}/requirements.txt"
             }
         }
 
         stage('Install Node.js Dependencies (Vue)') {
+            // Запускаем установку зависимостей, если это dev, main или MR/PR
             when {
-                expression {
-                    return env.GIT_BRANCH == 'origin/dev' ||
-                           env.GIT_BRANCH == 'origin/fix' ||
-                           env.GIT_BRANCH == 'origin/main'
+                anyOf {
+                    branch 'dev'
+                    branch 'main'
+                    changeRequest() // Включает все Merge Requests (например, из fix/* в dev)
                 }
             }
             steps {
                 echo 'Installing Node.js dependencies (Vue frontend)...'
-                bat "cd ${VUE_DIR} && npm install"
+                powershell "cd ${VUE_DIR} ; npm install"
             }
         }
 
         stage('Build Vue.js Frontend') {
+            // Запускаем сборку, если это dev, main или MR/PR
             when {
-                expression {
-                    return env.GIT_BRANCH == 'origin/dev' ||
-                           env.GIT_BRANCH == 'origin/fix' ||
-                           env.GIT_BRANCH == 'origin/main'
+                anyOf {
+                    branch 'dev'
+                    branch 'main'
+                    changeRequest() // Включает все Merge Requests (например, из fix/* в dev)
                 }
             }
             steps {
                 echo 'Building Vue.js application...'
-                bat "cd ${VUE_DIR} && npm run build"
-
-                bat "if not exist \"${DJANGO_DIR}\\static\\frontend\" mkdir \"${DJANGO_DIR}\\static\\frontend\""
-                bat "xcopy /E /I /Y \"${VUE_DIR}\\dist\\*\" \"${DJANGO_DIR}\\static\\frontend\\\""
-
+                // Комманды для Windows/bat лучше заменить на powershell для большей универсальности
+                powershell """
+                    cd ${VUE_DIR}
+                    npm run build
+                    # Копирование собранных файлов
+                    $targetDir = "${DJANGO_DIR}\\static\\frontend"
+                    if (-not (Test-Path $targetDir)) {
+                        mkdir $targetDir
+                    }
+                    Copy-Item -Path "${VUE_DIR}\\dist\\*" -Destination $targetDir -Recurse -Force
+                """
                 echo 'Vue.js built and copied to Django static/frontend folder.'
             }
         }
 
         stage('Run Django Tests') {
+            // Запускаем тесты, если это dev, main или MR/PR
             when {
-                expression {
-                    return env.GIT_BRANCH == 'origin/dev' ||
-                           env.GIT_BRANCH == 'origin/fix' ||
-                           env.GIT_BRANCH == 'origin/main'
+                anyOf {
+                    branch 'dev'
+                    branch 'main'
+                    changeRequest() // Включает все Merge Requests (например, из fix/* в dev)
                 }
             }
             steps {
                 echo 'Running Django tests...'
-                bat "python ${DJANGO_DIR}/manage.py test --verbosity=2"
+                powershell "python ${DJANGO_DIR}/manage.py test --verbosity=2"
             }
             post {
                 failure {
+                    // Уведомление об ошибке после тестов
                     emailext(
-                        subject: "TEST FAILED: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+                        subject: "TEST FAILED: ${env.JOB_NAME} #${env.BUILD_NUMBER} (${env.GIT_BRANCH})",
                         body: """<h3>Django/Vue CI Failed!</h3>
                                  <p><strong>Branch:</strong> ${env.GIT_BRANCH}</p>
                                  <p><strong>Commit:</strong> ${env.GIT_COMMIT}</p>
@@ -91,24 +122,28 @@ pipeline {
         }
 
         stage('Deploy to Production (main branch)') {
+            // Деплой только при прямом пуше в main (после успешного Merge Request)
             when {
-                expression {
-                    return env.GIT_BRANCH == 'origin/main'
-                }
+                branch 'main'
             }
             steps {
                 echo 'Deploying to production...'
+                // Переиспользуем команды сборки, чтобы обеспечить наличие свежего билда
+                powershell """
+                    cd ${VUE_DIR}
+                    npm run build
 
-                bat "cd ${VUE_DIR} && npm run build"
+                    $targetDir = "${DJANGO_DIR}\\static\\frontend"
+                    if (-not (Test-Path $targetDir)) {
+                        mkdir $targetDir
+                    }
+                    Copy-Item -Path "${VUE_DIR}\\dist\\*" -Destination $targetDir -Recurse -Force
 
-                bat "if not exist \"${DJANGO_DIR}\\static\\frontend\" mkdir \"${DJANGO_DIR}\\static\\frontend\""
-                bat "xcopy /E /I /Y \"${VUE_DIR}\\dist\\*\" \"${DJANGO_DIR}\\static\\frontend\\\""
-
-                bat "echo Deployment successful at %DATE% %TIME% on branch main > deployment.log"
-                bat "echo Git commit: %GIT_COMMIT% >> deployment.log"
+                    "Deployment successful on branch main" | Out-File deployment.log
+                    "Git commit: ${env.GIT_COMMIT}" | Out-File deployment.log -Append
+                """
 
                 archiveArtifacts artifacts: 'deployment.log', allowEmptyArchive: true
-
                 echo 'Production deploy prepared!'
             }
             post {
