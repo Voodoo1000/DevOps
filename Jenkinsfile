@@ -8,6 +8,14 @@ pipeline {
     }
 
     stages {
+        stage('Debug Branch Info') {
+            steps {
+                script {
+                    echo "GIT_BRANCH: '${env.GIT_BRANCH}'"
+                }
+            }
+        }
+
         stage('Checkout') {
             steps {
                 echo 'Cloning repository...'
@@ -49,7 +57,6 @@ pipeline {
                 bat "cd ${VUE_DIR} && npm run build"
 
                 bat "if not exist \"${DJANGO_DIR}\\static\\frontend\" mkdir \"${DJANGO_DIR}\\static\\frontend\""
-
                 bat "xcopy /E /I /Y \"${VUE_DIR}\\dist\\*\" \"${DJANGO_DIR}\\static\\frontend\\\""
 
                 echo 'Vue.js built and copied to Django static/frontend folder.'
@@ -83,40 +90,6 @@ pipeline {
             }
         }
 
-        stage('Merge fix to dev') {
-            when {
-                expression {
-                    return env.GIT_BRANCH == 'origin/fix'
-                }
-            }
-            steps {
-                script {
-                    bat """
-                        git config --global user.email "jenkins@localhost"
-                        git config --global user.name "Jenkins CI"
-                        git checkout dev
-                        git pull origin dev
-                        git merge --no-ff origin/fix -m "Auto-merge from fix branch"
-                        git push origin dev
-                    """
-                    
-                    echo "Successfully merged fix into dev!"
-                }
-            }
-            post {
-                failure {
-                    emailext(
-                        subject: "MERGE FAILED: fix → dev in ${env.JOB_NAME} #${env.BUILD_NUMBER}",
-                        body: """<h3>Merge from fix to dev failed!</h3>
-                                <p><strong>Branch:</strong> ${env.GIT_BRANCH}</p>
-                                <p><strong>Commit:</strong> ${env.GIT_COMMIT}</p>
-                                <p><strong>Log:</strong> <a href="${env.BUILD_URL}console">View Console</a></p>""",
-                        to: "${env.EMAIL_RECIPIENT}"
-                    )
-                }
-            }
-        }
-
         stage('Deploy to Production (main branch)') {
             when {
                 expression {
@@ -126,7 +99,6 @@ pipeline {
             steps {
                 echo 'Deploying to production...'
 
-                // 1. Собираем Vue.js
                 bat "cd ${VUE_DIR} && npm run build"
 
                 bat "if not exist \"${DJANGO_DIR}\\static\\frontend\" mkdir \"${DJANGO_DIR}\\static\\frontend\""
@@ -134,92 +106,40 @@ pipeline {
 
                 bat "echo Deployment successful at %DATE% %TIME% on branch main > deployment.log"
                 bat "echo Git commit: %GIT_COMMIT% >> deployment.log"
+
                 archiveArtifacts artifacts: 'deployment.log', allowEmptyArchive: true
 
-                echo 'Starting Django server on http://localhost:8000...'
-                bat "cd ${DJANGO_DIR}"
-                powershell 'start "DjangoServer" cmd /k "python manage.py runserver 8000"' 
-                bat 'timeout /t 5 >nul'
-
-                bat "for /F \"tokens=2\" %i in ('tasklist ^| findstr \"python\"') do set PID=%i"
-                bat "echo Django server PID: %PID%"
-                bat "echo %PID% > django_pid.txt"
-                archiveArtifacts artifacts: 'django_pid.txt', allowEmptyArchive: true
-
-                echo 'Django server started on http://localhost:8000 (for demo only)'
+                echo 'Production deploy prepared!'
             }
             post {
                 success {
                     emailext(
-                        subject: "DJANGO SERVER DEPLOYED: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
-                        body: """<h2>🎉 Django Server Deployed!</h2>
-                                <p><strong>Project:</strong> Django + Vue.js</p>
-                                <p><strong>Branch:</strong> ${env.GIT_BRANCH}</p>
-                                <p><strong>Commit:</strong> ${env.GIT_COMMIT}</p>
-                                <p><strong>Server URL:</strong> <a href="http://localhost:8000">http://localhost:8000</a> (on Jenkins machine)</p>
-                                <p><em>Note: This is a demo server. For production, use Gunicorn/Nginx/Docker.</em></p>
-                                <p><strong>Deployment log attached.</strong></p>
-                                <p><a href="${env.BUILD_URL}">View Build</a></p>""",
-                        to: "${env.EMAIL_RECIPIENT}"
-                    )
-                }
-                failure {
-                    emailext(
-                        subject: "DEPLOY FAILED: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
-                        body: """<h3>🚨 Deployment failed!</h3>
-                                <p><strong>Branch:</strong> ${env.GIT_BRANCH}</p>
-                                <p><strong>Log:</strong> <a href="${env.BUILD_URL}console">View Console</a></p>""",
+                        subject: "DEPLOYED TO PRODUCTION: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+                        body: """<h2>Production Deployment Prepared!</h2>
+                                 <p><strong>Project:</strong> Django + Vue.js</p>
+                                 <p><strong>Branch:</strong> ${env.GIT_BRANCH}</p>
+                                 <p><strong>Commit:</strong> ${env.GIT_COMMIT}</p>
+                                 <p><strong>Deployment log attached.</strong></p>
+                                 <p><a href="${env.BUILD_URL}">View Build</a></p>""",
                         to: "${env.EMAIL_RECIPIENT}"
                     )
                 }
             }
         }
-        // stage('Kill Django Server') {
-        //     when {
-        //         expression { return true } 
-        //     }
-        //     steps {
-        //         echo "Killing Django server process..."
-        //         script {
-        //             if (fileExists('django_server.pid')) {
-        //                 def pid = readFile('django_server.pid').trim()
-        //                 try {
-        //                     bat "taskkill /PID ${pid} /F"
-        //                     echo "Successfully killed process with PID ${pid}."
-        //                 } catch (Exception e) {
-        //                     echo "Warning: Could not kill process with PID ${pid}. It may have already exited. Error: ${e.getMessage()}"
-        //                 }
-        //                 sh 'rm django_server.pid'
-        //             } else {
-        //                 echo "PID file not found. Server may not have been started or already stopped."
-        //             }
-        //         }
-        //     }
-        // }
     }
 
     post {
         always {
-            echo "💀 Killing Django server process..."
-            script { // Блок 'script' используется для Groovy-логики (if/else, fileExists, readFile)
-                if (fileExists('django_server.pid')) {
-                    def pid = readFile('django_server.pid').trim()
-                    
-                    try {
-                        bat "taskkill /PID ${pid} /F /T"
-                        echo "Successfully killed process with PID ${pid}."
-                    } catch (Exception e) {
-                        echo "Warning: Process with PID ${pid} may have already exited. Error: ${e.getMessage()}"
-                    }
-                    
-                    bat 'del django_server.pid'
-                } else {
-                    echo "PID file not found."
-                }
-            }
-            
-            echo "Cleaning workspace..."
-            cleanWs() // Очистка рабочего пространства
+            echo 'Cleaning workspace...'
+            cleanWs()
+        }
+        failure {
+            emailext(
+                subject: "BUILD FAILED: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+                body: """<h3>Build failed during pipeline execution.</h3>
+                         <p>Check logs: <a href="${env.BUILD_URL}console">Console Output</a></p>""",
+                to: "${env.EMAIL_RECIPIENT}"
+            )
         }
     }
 }
