@@ -5,7 +5,6 @@ from django.contrib.auth.models import User
 from datetime import datetime
 from studentDormitory.models import Student, Room, DutySchedule, Staff, RepairRequests
 
-#sdfsdfsdfsdfsdfываыва
 class StudentsViewsetTestCase(TestCase):
     def setUp(self):
         self.client = APIClient()
