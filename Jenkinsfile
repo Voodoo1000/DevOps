@@ -36,6 +36,7 @@ pipeline {
                     changeRequest() 
                     expression { return env.GIT_BRANCH == 'origin/dev' }
                     expression { return env.GIT_BRANCH == 'origin/main' }
+                    expression { env.GIT_BRANCH?.startsWith('origin/fix/') }
                 }
             }
             steps {
@@ -50,6 +51,7 @@ pipeline {
                     changeRequest() 
                     expression { return env.GIT_BRANCH == 'origin/dev' }
                     expression { return env.GIT_BRANCH == 'origin/main' }
+                    expression { env.GIT_BRANCH?.startsWith('origin/fix/') }
                 }
             }
             steps {
@@ -69,6 +71,7 @@ pipeline {
                     changeRequest() 
                     expression { return env.GIT_BRANCH == 'origin/dev' }
                     expression { return env.GIT_BRANCH == 'origin/main' }
+                    expression { env.GIT_BRANCH?.startsWith('origin/fix/') }
                 }
             }
             steps {
