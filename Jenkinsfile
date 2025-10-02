@@ -33,10 +33,9 @@ pipeline {
         stage('Install Node.js Dependencies (Vue)') {
             when {
                 anyOf {
-                    // changeRequest() 
-                    // expression { return env.GIT_BRANCH == 'origin/dev' }
-                    // expression { return env.GIT_BRANCH == 'origin/main' }
-                    expression { return env.GIT_BRANCH ==~ /refs\/heads\/(origin\/(dev|main)|fix\/.+)/ }
+                    changeRequest() 
+                    expression { return env.GIT_BRANCH == 'origin/dev' }
+                    expression { return env.GIT_BRANCH == 'origin/main' }
                 }
             }
             steps {
@@ -48,10 +47,9 @@ pipeline {
         stage('Build Vue.js Frontend') {
             when {
                 anyOf {
-                    // changeRequest() 
-                    // expression { return env.GIT_BRANCH == 'origin/dev' }
-                    // expression { return env.GIT_BRANCH == 'origin/main' }
-                    expression { return env.GIT_BRANCH ==~ /refs\/heads\/(origin\/(dev|main)|fix\/.+)/ }
+                    changeRequest() 
+                    expression { return env.GIT_BRANCH == 'origin/dev' }
+                    expression { return env.GIT_BRANCH == 'origin/main' }
                 }
             }
             steps {
@@ -68,10 +66,9 @@ pipeline {
         stage('Run Django Tests') {
             when {
                 anyOf {
-                    // changeRequest() 
-                    // expression { return env.GIT_BRANCH == 'origin/dev' }
-                    // expression { return env.GIT_BRANCH == 'origin/main' }
-                    expression { return env.GIT_BRANCH ==~ /refs\/heads\/(origin\/(dev|main)|fix\/.+)/ }
+                    changeRequest() 
+                    expression { return env.GIT_BRANCH == 'origin/dev' }
+                    expression { return env.GIT_BRANCH == 'origin/main' }
                 }
             }
             steps {
