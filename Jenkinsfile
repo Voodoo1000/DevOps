@@ -2,8 +2,9 @@ pipeline {
     agent any
     environment {
         DOCKERHUB_USERNAME = credentials('dockerhub-username')
-        FRONTEND_IMAGE = "voodoo332/devops-frontend"
-        BACKEND_IMAGE  = "voodoo332/devops-backend"
+        FRONTEND_IMAGE     = "voodoo332/devops-frontend"
+        BACKEND_IMAGE      = "voodoo332/devops-backend"
+        DEPLOY_PATH        = "D:\\Файлы\\Учеба\\DevOps\\DevOps"
     }
     stages {
         stage('Checkout') {
@@ -32,37 +33,29 @@ pipeline {
             }
         }
 
-        stage('Run Django Tests in Container') {
+        stage('Run Django Tests') {
             steps {
-                script {
-                    withCredentials([usernamePassword(
-                        credentialsId: 'dockerhub-username',
-                        usernameVariable: 'DOCKER_USER',
-                        passwordVariable: 'DOCKER_TOKEN'
-                    )]) {
-                        def FRONTEND_IMAGE = "${DOCKER_USER}/devops-frontend"
-                        def BACKEND_IMAGE  = "${DOCKER_USER}/devops-backend"
-
-                        bat """
-                            docker run -d --name test-backend ^
-                            -e DEBUG=True ^
-                            -e ALLOWED_HOSTS=* ^
-                            ${BACKEND_IMAGE}:latest ^
-                            python manage.py runserver 0.0.0.0:8000
-                            timeout /t 10 /nobreak >nul
-                            docker exec test-backend python manage.py test
-                            docker stop test-backend
-                            docker rm test-backend
-                        """
-                    }
-                }
+                bat "docker run --rm -e DEBUG=True %BACKEND_IMAGE%:latest python manage.py test"
             }
         }
 
-        stage('Deploy to Production (main branch)') {
+        stage('Deploy to localhost (main branch)') {
             when { branch 'main' }
             steps {
-                echo "Образы готовы к деплою!"
+                script {
+                    bat "if not exist \"${DEPLOY_PATH}\" mkdir \"${DEPLOY_PATH}\""
+
+                    bat "copy /Y \"${WORKSPACE}\\docker-compose-deploy.yml\" \"${DEPLOY_PATH}\\docker-compose.yml\""
+
+                    bat """
+                        cd /d ${DEPLOY_PATH}
+                        docker-compose pull
+                        docker-compose up -d
+                    """
+                    echo "Приложение развёрнуто локально по адресу:"
+                    echo "   Фронтенд: http://localhost"
+                    echo "   Бэкенд:   http://localhost:8000/admin"
+                }
             }
         }
     }
