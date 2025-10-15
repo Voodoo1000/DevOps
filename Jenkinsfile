@@ -1,7 +1,7 @@
 pipeline {
     agent any
     environment {
-        DOCKERHUB_USERNAME = credentials('dockerhub-username') // Это создаёт DOCKERHUB_USERNAME и DOCKERHUB_USERNAME_PSW
+        DOCKERHUB_USERNAME = credentials('dockerhub-username')
         FRONTEND_IMAGE = "voodoo332/devops-frontend"
         BACKEND_IMAGE  = "voodoo332/devops-backend"
     }
@@ -15,7 +15,6 @@ pipeline {
         stage('Build and Push Docker Images') {
             steps {
                 script {
-                    // Безопасный вход в Docker Hub на Windows
                     withCredentials([usernamePassword(
                         credentialsId: 'dockerhub-username',
                         usernameVariable: 'DOCKER_USER',
@@ -52,7 +51,7 @@ pipeline {
         stage('Deploy to Production (main branch)') {
             when { branch 'main' }
             steps {
-                echo "✅ Образы готовы к деплою!"
+                echo "Образы готовы к деплою!"
             }
         }
     }
