@@ -10,7 +10,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Копируем всё приложение
 COPY . .
 
-# Собираем статику (если будет использоваться)
+# Применяем миграции и собираем статику
+RUN python manage.py migrate --noinput
 RUN python manage.py collectstatic --noinput
 
 # Запуск через Gunicorn (продакшен!)
