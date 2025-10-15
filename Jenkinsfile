@@ -34,17 +34,28 @@ pipeline {
 
         stage('Run Django Tests in Container') {
             steps {
-                bat '''
-                    docker run -d --name test-backend ^
-                      -e DEBUG=True ^
-                      -e ALLOWED_HOSTS=* ^
-                      voodoo1000/devops-backend:latest ^
-                      python manage.py runserver 0.0.0.0:8000
-                    timeout /t 10 /nobreak >nul
-                    docker exec test-backend python manage.py test
-                    docker stop test-backend
-                    docker rm test-backend
-                '''
+                script {
+                    withCredentials([usernamePassword(
+                        credentialsId: 'dockerhub-username',
+                        usernameVariable: 'DOCKER_USER',
+                        passwordVariable: 'DOCKER_TOKEN'
+                    )]) {
+                        def FRONTEND_IMAGE = "${DOCKER_USER}/devops-frontend"
+                        def BACKEND_IMAGE  = "${DOCKER_USER}/devops-backend"
+
+                        bat """
+                            docker run -d --name test-backend ^
+                            -e DEBUG=True ^
+                            -e ALLOWED_HOSTS=* ^
+                            ${BACKEND_IMAGE}:latest ^
+                            python manage.py runserver 0.0.0.0:8000
+                            timeout /t 10 /nobreak >nul
+                            docker exec test-backend python manage.py test
+                            docker stop test-backend
+                            docker rm test-backend
+                        """
+                    }
+                }
             }
         }
 
