@@ -49,6 +49,7 @@ pipeline {
 
                     bat """
                         cd /d ${DEPLOY_PATH}
+                        docker-compose down --remove-orphans
                         docker-compose pull
                         docker-compose up -d
                     """
