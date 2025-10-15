@@ -1,0 +1,22 @@
+version: '3.8'
+services:
+  backend:
+    image: voodoo332/devops-backend:latest
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./media:/app/media
+    environment:
+      - DEBUG=False
+      - ALLOWED_HOSTS=localhost,127.0.0.1,0.0.0.0
+    restart: unless-stopped
+
+  frontend:
+    image: voodoo332/devops-frontend:latest
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    volumes:
+      - ./media:/app/media
+    restart: unless-stopped
