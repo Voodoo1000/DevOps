@@ -43,15 +43,13 @@ pipeline {
             when {  expression { env.GIT_BRANCH == 'origin/main' } }
             steps {
                 script {
-                    bat "if not exist \"${DEPLOY_PATH}\" mkdir \"${DEPLOY_PATH}\""
-
-                    bat "copy /Y \"${WORKSPACE}\\docker-compose-deploy.yml\" \"${DEPLOY_PATH}\\docker-compose.yml\""
-
                     bat """
+                        if not exist "${DEPLOY_PATH}" mkdir "${DEPLOY_PATH}"
+                        copy /Y "${WORKSPACE}\\docker-compose-deploy.yml" "${DEPLOY_PATH}\\docker-compose.yml"
                         cd /d ${DEPLOY_PATH}
-                        docker-compose down --remove-orphans
-                        docker-compose pull
-                        docker-compose up -d
+                        docker-compose -p devops down --remove-orphans
+                        docker-compose -p devops pull
+                        docker-compose -p devops up -d
                     """
                     echo "Приложение развёрнуто локально по адресу:"
                     echo "   Фронтенд: http://localhost"
