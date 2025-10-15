@@ -40,7 +40,7 @@ pipeline {
         }
 
         stage('Deploy to localhost (main branch)') {
-            when { branch 'main' }
+            when {  expression { env.GIT_BRANCH == 'origin/main' } }
             steps {
                 script {
                     bat "if not exist \"${DEPLOY_PATH}\" mkdir \"${DEPLOY_PATH}\""
