@@ -12,6 +12,7 @@ COPY . .
 
 # Применяем миграции и собираем статику
 RUN python manage.py migrate --noinput
+RUN python manage.py shell -c "from django.contrib.auth.models import User; User.objects.filter(username='admin').exists() or User.objects.create_superuser('admin', 'admin@example.com', 'admin')"
 RUN python manage.py collectstatic --noinput
 
 # Запуск через Gunicorn (продакшен!)
