@@ -19,5 +19,5 @@ services:
       - backend
     volumes:
       - ./media:/app/media
-      - ./staticfiles:/app/staticfiles
+      # - ./staticfiles:/app/staticfiles
     restart: unless-stopped
