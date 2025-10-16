@@ -14,6 +14,7 @@ from openpyxl import Workbook
 from docx import Document 
 import io
 from django.utils.decorators import method_decorator
+from django.views.decorators.csrf import csrf_exempt
 
 class StudentViewset(
 	mixins.CreateModelMixin,
