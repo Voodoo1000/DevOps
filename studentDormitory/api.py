@@ -13,6 +13,7 @@ from django.http import FileResponse
 from openpyxl import Workbook
 from docx import Document 
 import io
+from django.utils.decorators import method_decorator
 
 class StudentViewset(
 	mixins.CreateModelMixin,
@@ -257,6 +258,7 @@ class UserViewset(GenericViewSet):
 		users = User.objects.values("id", "username")
 		return Response(users)
 	
+	@method_decorator(csrf_exempt)
 	@action(url_path="login", methods=["POST"], detail=False)
 	def login(self, request, *args, **kwargs):
 		username = request.data.get("user")

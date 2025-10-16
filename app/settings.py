@@ -131,3 +131,6 @@ STATIC_ROOT = BASE_DIR / 'staticfiles'
 # https://docs.djangoproject.com/en/5.1/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+SESSION_COOKIE_SAMESITE = 'Lax'  # или None, если нужно
+SESSION_COOKIE_HTTPONLY = True
