@@ -211,7 +211,7 @@ onBeforeMount(async () => {
     <div class="row mt-3">
       <div class="col d-flex gap-2">
         <button class="btn btn-success" @click="fetchStats()" data-bs-toggle="modal"
-          data-bs-target="#statsModal">Статистика</button>
+          data-bs-target="#statsModal">Статистика()</button>
         <button class="btn btn-primary" @click="exportToExcel()">Экспорт в Excel</button>
         <button class="btn btn-primary" @click="exportToWord()">Экспорт в Word</button>
       </div>
